@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STM32 Benchmark Runner - Web Serial</title>
+  <meta name="description" content="Bare-metal hardware benchmarking and telemetry runner for STM32 microcontrollers over Web Serial.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base:        #141414;
+      --bg-surface:     #1b1b1b;
+      --bg-surface-alt: #222222;
+      --bg-term:        #0d0d0d;
+      --border:         #2e2e2e;
+      --border-light:   #3e3e3e;
+
+      --text:           #e2e2e2;
+      --muted:          #909090;
+      --dim:            #606060;
+
+      --accent:         #f5c518;
+      --accent-dim:     #c49e10;
+      --accent-bg:      rgba(245, 197, 24, 0.08);
+
+      --green:          #4ade80;
+      --red:            #ef4444;
+      --amber:          #f5c518;
+
+      --mono:           'Share Tech Mono', 'Courier New', monospace;
+      --sans:           'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      background: var(--bg-base);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* Hazard Accent Stripe */
+    .hazard-stripe {
+      height: 4px;
+      width: 100%;
+      background: repeating-linear-gradient(
+        -45deg,
+        var(--accent) 0px,
+        var(--accent) 10px,
+        #141414 10px,
+        #141414 20px
+      );
+      flex-shrink: 0;
+      border-bottom: 1px solid #000;
+    }
+
+    /* Navigation Header */
+    .nav {
+      height: 46px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      flex-shrink: 0;
+      gap: 12px;
+    }
+
+    .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      overflow: hidden;
+    }
+
+    .nav-title {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .nav-title .accent {
+      color: var(--accent);
+    }
+
+    .chip {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 2px 7px;
+      background: var(--accent-bg);
+      color: var(--accent);
+      border: 1px solid rgba(245, 197, 24, 0.3);
+      letter-spacing: 1px;
+    }
+
+    .nav-stats {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--mono);
+      border-left: 1px solid var(--border);
+      padding-left: 12px;
+      white-space: nowrap;
+    }
+
+    .nav-stats span b {
+      color: var(--text);
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      letter-spacing: 1px;
+      padding: 5px 12px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg-surface-alt);
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-transform: uppercase;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .btn:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .btn-conn {
+      background: var(--accent);
+      color: #141414;
+      font-weight: 700;
+      border-color: var(--accent);
+    }
+
+    .btn-conn:hover:not(:disabled) {
+      background: #ffffff;
+      color: #141414;
+      border-color: #ffffff;
+    }
+
+    .btn-disc {
+      background: #991b1b;
+      color: #ffffff;
+      border-color: #dc2626;
+    }
+
+    .btn-disc:hover:not(:disabled) {
+      background: #dc2626;
+    }
+
+    .btn-run {
+      background: var(--bg-surface-alt);
+      color: var(--accent);
+      border-color: var(--accent-dim);
+      font-weight: 700;
+    }
+
+    .btn-run:hover:not(:disabled) {
+      background: var(--accent);
+      color: #141414;
+      border-color: var(--accent);
+    }
+
+    .btn:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--red);
+      border: 1px solid rgba(0, 0, 0, 0.5);
+    }
+
+    .status-dot.on {
+      background: var(--green);
+    }
+
+    /* Scorecard Bar */
+    .scorecard {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 14px;
+      flex-shrink: 0;
+    }
+
+    .sc-hero {
+      min-width: 150px;
+      border-right: 1px solid var(--border);
+      padding-right: 12px;
+    }
+
+    .sc-hero-title {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .sc-hero-val {
+      font-family: var(--mono);
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1.1;
+      margin: 2px 0;
+    }
+
+    .sc-hero-sub {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--dim);
+      letter-spacing: 0.5px;
+    }
+
+    .sc-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 6px;
+      flex: 1;
+    }
+
+    .sc-tile {
+      background: #141414;
+      border: 1px solid var(--border);
+      padding: 4px 6px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .sc-tile:hover {
+      border-color: var(--accent);
+    }
+
+    .sc-label {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .sc-score {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 1px 0;
+    }
+
+    .sc-bar {
+      height: 2px;
+      background: #242424;
+      margin-top: 3px;
+      overflow: hidden;
+    }
+
+    .sc-fill {
+      height: 100%;
+      background: var(--accent);
+      transition: width 0.3s ease;
+    }
+
+    /* Main Workspace */
+    .main {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+
+    /* Left Table Pane */
+    .pane-table {
+      flex: 1.6;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      min-width: 0;
+      background: var(--bg-base);
+    }
+
+    .toolbar {
+      height: 38px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .tab-group {
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+    }
+
+    .tab {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.5px;
+      padding: 3px 7px;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+
+    .tab:hover {
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    .tab.active {
+      background: var(--accent-bg);
+      color: var(--accent);
+      border-color: rgba(245, 197, 24, 0.3);
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .search-input {
+      background: #141414;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 3px 8px;
+      width: 140px;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+    }
+
+    /* Table Container */
+    .table-wrap {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: left;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      background: var(--bg-surface);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      z-index: 2;
+    }
+
+    tbody td {
+      padding: 6px 10px;
+      border-bottom: 1px solid #1f1f1f;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+
+    tbody tr:hover {
+      background: rgba(245, 197, 24, 0.03);
+    }
+
+    .bench-name {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .bench-desc {
+      font-size: 10.5px;
+      color: var(--dim);
+    }
+
+    .score {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .mono {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .cat {
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 2px 6px;
+      text-transform: uppercase;
+      font-family: var(--mono);
+      display: inline-block;
+      border: 1px solid var(--border);
+      background: #181818;
+      color: var(--muted);
+    }
+
+    .tag-hw {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      background: rgba(74, 222, 128, 0.08);
+      color: var(--green);
+    }
+
+    .tag-sw {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 600;
+      padding: 1px 5px;
+      border: 1px solid var(--border);
+      background: #181818;
+      color: var(--dim);
+    }
+
+    /* Right Terminal Pane */
+    .pane-term {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 320px;
+      background: var(--bg-term);
+    }
+
+    .term-top {
+      height: 38px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      flex-shrink: 0;
+    }
+
+    .term-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 1px;
+      color: var(--accent-dim);
+      text-transform: uppercase;
+    }
+
+    .term-output {
+      flex: 1;
+      padding: 8px 10px;
+      overflow-y: auto;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.5;
+      color: #d1d5db;
+      background: var(--bg-term);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .term-cli {
+      height: 36px;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .cli-prompt {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .cli-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 11px;
+      outline: none;
+    }
+
+    .empty-prompt {
+      padding: 40px 10px;
+      text-align: center;
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Top Hazard Stripe -->
+    <div class="hazard-stripe"></div>
+
+    <!-- Top Navigation Bar -->
+    <header class="nav">
+      <div class="nav-left">
+        <div class="nav-title">
+          <span>STM32<span class="accent">BENCHMARK</span></span>
+          <span class="chip" id="hdr-chip">DISCONNECTED</span>
+        </div>
+        <div class="nav-stats">
+          <span>CLK: <b id="hdr-clk">-- MHz</b></span>
+          <span>CORE: <b id="hdr-core">--</b></span>
+          <span>FPU: <b id="hdr-fpu">--</b></span>
+          <span>HW: <b id="hdr-hw">--</b></span>
+          <span>CACHE: <b id="hdr-cache">--</b></span>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <div class="status-dot" id="conn-dot"></div>
+        <button id="btn-conn" class="btn btn-conn" onclick="toggleConn()">Connect USB</button>
+        <button id="btn-run" class="btn btn-run" onclick="runBenchmarks()" disabled>Run Benchmarks</button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="main">
+      <!-- Left: Table -->
+      <section class="pane-table">
+        <!-- Scorecard Hub -->
+        <div class="scorecard" id="scorecard">
+          <div class="sc-hero">
+            <div class="sc-hero-title">STM32MARK INDEX</div>
+            <div class="sc-hero-val" id="sc-total">--</div>
+            <div class="sc-hero-sub">Standardized Hardware Score</div>
+          </div>
+          <div class="sc-grid">
+            <div class="sc-tile" onclick="setCat('CPU')" title="Filter CPU integer tests">
+              <div class="sc-label">CPU</div>
+              <div class="sc-score" id="sc-cpu">--</div>
+              <div class="sc-bar"><div class="sc-fill" id="bar-cpu" style="width:0%"></div></div>
+            </div>
+            <div class="sc-tile" onclick="setCat('FPU')" title="Filter FPU float tests">
+              <div class="sc-label">FPU</div>
+              <div class="sc-score" id="sc-fpu">--</div>
+              <div class="sc-bar"><div class="sc-fill" id="bar-fpu" style="width:0%"></div></div>
+            </div>
+            <div class="sc-tile" onclick="setCat('DSP')" title="Filter DSP & Coprocessor tests">
+              <div class="sc-label">DSP / COP</div>
+              <div class="sc-score" id="sc-dsp">--</div>
+              <div class="sc-bar"><div class="sc-fill" id="bar-dsp" style="width:0%"></div></div>
+            </div>
+            <div class="sc-tile" onclick="setCat('GFX')" title="Filter 2D/3D Graphics tests">
+              <div class="sc-label">2D/3D GFX</div>
+              <div class="sc-score" id="sc-gfx">--</div>
+              <div class="sc-bar"><div class="sc-fill" id="bar-gfx" style="width:0%"></div></div>
+            </div>
+            <div class="sc-tile" onclick="setCat('AI')" title="Filter TinyML Edge AI tests">
+              <div class="sc-label">TINYML</div>
+              <div class="sc-score" id="sc-ai">--</div>
+              <div class="sc-bar"><div class="sc-fill" id="bar-ai" style="width:0%"></div></div>
+            </div>
+            <div class="sc-tile" onclick="setCat('Crypto')" title="Filter Hardware RNG & Crypto tests">
+              <div class="sc-label">CRYPTO</div>
+              <div class="sc-score" id="sc-crypto">--</div>
+              <div class="sc-bar"><div class="sc-fill" id="bar-crypto" style="width:0%"></div></div>
+            </div>
+            <div class="sc-tile" onclick="setCat('IO')" title="Filter GPIO, NVIC & DMA tests">
+              <div class="sc-label">I/O &amp; RT</div>
+              <div class="sc-score" id="sc-io">--</div>
+              <div class="sc-bar"><div class="sc-fill" id="bar-io" style="width:0%"></div></div>
+            </div>
+            <div class="sc-tile" onclick="setCat('Memory')" title="Filter Memory & Cache tests">
+              <div class="sc-label">MEMORY</div>
+              <div class="sc-score" id="sc-mem">--</div>
+              <div class="sc-bar"><div class="sc-fill" id="bar-mem" style="width:0%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="tab-group" id="tabs">
+            <button class="tab active" onclick="setCat('ALL')">All <span id="cnt-ALL">(0)</span></button>
+            <button class="tab" onclick="setCat('CPU')">CPU <span id="cnt-CPU">(0)</span></button>
+            <button class="tab" onclick="setCat('FPU')">FPU <span id="cnt-FPU">(0)</span></button>
+            <button class="tab" onclick="setCat('DSP')">DSP <span id="cnt-DSP">(0)</span></button>
+            <button class="tab" onclick="setCat('GFX')">GFX <span id="cnt-GFX">(0)</span></button>
+            <button class="tab" onclick="setCat('AI')">AI <span id="cnt-AI">(0)</span></button>
+            <button class="tab" onclick="setCat('Crypto')">Crypto <span id="cnt-Crypto">(0)</span></button>
+            <button class="tab" onclick="setCat('IO')">I/O <span id="cnt-IO">(0)</span></button>
+            <button class="tab" onclick="setCat('Memory')">Mem <span id="cnt-Memory">(0)</span></button>
+          </div>
+          <div class="toolbar-actions">
+            <input type="text" id="filter-input" class="search-input" placeholder="Search tests..." oninput="applyFilter()">
+            <button class="btn" style="padding:2px 8px;font-size:10px" onclick="exportCSV()">CSV</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:85px">Cat</th>
+                <th>Benchmark</th>
+                <th style="width:110px">Score</th>
+                <th style="width:75px">Unit</th>
+                <th style="width:95px">Cycles</th>
+                <th style="width:80px">Time (µs)</th>
+                <th style="width:65px">Status</th>
+              </tr>
+            </thead>
+            <tbody id="tbody">
+              <tr>
+                <td colspan="7">
+                  <div class="empty-prompt">
+                    Connect USB to ST-Link Virtual COM Port (115200 8N1) to begin.
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Right: Terminal Console -->
+      <section class="pane-term">
+        <div class="term-top">
+          <div class="term-title">Serial Console // 115200 8N1</div>
+          <button class="btn" style="padding:2px 8px;font-size:10px" onclick="clearTerm()">Clear</button>
+        </div>
+        <div class="term-output" id="term">STM32 Benchmark Console ready. Connect USB to begin.&#10;</div>
+        <div class="term-cli">
+          <span class="cli-prompt">STM32&gt;</span>
+          <input type="text" id="cli" class="cli-input" placeholder="Commands: r (run), j (json), s (specs), h (help)..." onkeydown="handleCli(event)">
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    let port = null;
+    let reader = null;
+    let keepReading = false;
+    let rawBuf = '';
+    let currentCat = 'ALL';
+    let benchmarks = [];
+
+    function log(str) {
+      const el = document.getElementById('term');
+      el.textContent += str;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function clearTerm() {
+      document.getElementById('term').textContent = '';
+    }
+
+    async function toggleConn() {
+      if (port) await disconnect();
+      else await connect();
+    }
+
+    async function connect() {
+      if (!('serial' in navigator)) {
+        alert('Web Serial API is not supported in this browser. Please use Chrome, Edge, or Brave.');
+        return;
+      }
+
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({
+          baudRate: 115200,
+          dataBits: 8,
+          stopBits: 1,
+          parity: 'none',
+          flowControl: 'none'
+        });
+
+        try {
+          await port.setSignals({ dataTerminalReady: true, requestToSend: true });
+        } catch (e) {}
+
+        setConnected(true);
+        log('\n[Connected @ 115200 baud]\n');
+        keepReading = true;
+        readLoop();
+
+        setTimeout(() => cmd('j'), 500);
+      } catch (err) {
+        log('\n[Connection Error]: ' + err.message + '\n');
+      }
+    }
+
+    async function disconnect() {
+      keepReading = false;
+      try { if (reader) await reader.cancel(); } catch (e) {}
+      try { if (port) await port.close(); } catch (e) {}
+      port = null;
+      setConnected(false);
+      log('\n[Disconnected]\n');
+    }
+
+    function setConnected(on) {
+      document.getElementById('conn-dot').classList.toggle('on', on);
+      const b = document.getElementById('btn-conn');
+      b.textContent = on ? 'Disconnect' : 'Connect USB';
+      b.className = 'btn ' + (on ? 'btn-disc' : 'btn-conn');
+
+      const btnRun = document.getElementById('btn-run');
+      if (btnRun) {
+        btnRun.disabled = !on;
+        btnRun.textContent = 'Run Benchmarks';
+      }
+    }
+
+    function runBenchmarks() {
+      const btn = document.getElementById('btn-run');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+      }
+      cmd('r');
+    }
+
+    async function cmd(c) {
+      if (!port || !port.writable) return;
+      try {
+        const w = port.writable.getWriter();
+        await w.write(new TextEncoder().encode(c + '\r\n'));
+        w.releaseLock();
+      } catch (err) {
+        log('\n[TX Error]: ' + err.message + '\n');
+      }
+    }
+
+    function handleCli(e) {
+      if (e.key === 'Enter') {
+        const input = document.getElementById('cli');
+        const val = input.value.trim();
+        if (val) {
+          cmd(val);
+          input.value = '';
+        }
+      }
+    }
+
+    async function readLoop() {
+      const dec = new TextDecoder();
+      while (port && port.readable && keepReading) {
+        reader = port.readable.getReader();
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const str = dec.decode(value);
+            log(str);
+            parseChunk(str);
+          }
+        } catch (err) {
+          console.warn('Reader error:', err);
+        } finally {
+          reader.releaseLock();
+        }
+      }
+    }
+
+    function parseChunk(chunk) {
+      rawBuf += chunk;
+      if (rawBuf.length > 131072) rawBuf = rawBuf.slice(-32768);
+
+      const startTag = rawBuf.indexOf('<!--JSON_START-->');
+      const endTag = rawBuf.indexOf('<!--JSON_END-->');
+
+      if (startTag >= 0 && endTag > startTag) {
+        const jsonStr = rawBuf.substring(startTag + 17, endTag).trim();
+        rawBuf = rawBuf.substring(endTag + 15);
+        parseJSON(jsonStr);
+        return;
+      }
+
+      const firstBrace = rawBuf.indexOf('{');
+      if (firstBrace < 0) return;
+
+      let depth = 0;
+      let lastBrace = -1;
+
+      for (let i = firstBrace; i < rawBuf.length; i++) {
+        if (rawBuf[i] === '{') depth++;
+        else if (rawBuf[i] === '}') {
+          depth--;
+          if (depth === 0) {
+            lastBrace = i;
+            break;
+          }
+        }
+      }
+
+      if (lastBrace > firstBrace) {
+        const candidate = rawBuf.substring(firstBrace, lastBrace + 1);
+        if (parseJSON(candidate)) {
+          rawBuf = rawBuf.substring(lastBrace + 1);
+        }
+      }
+    }
+
+    function parseJSON(str) {
+      try {
+        const sanitized = str.replace(/,\s*\]/g, ']').replace(/,\s*\}/g, '}');
+        const obj = JSON.parse(sanitized);
+        if (obj.benchmarks && Array.isArray(obj.benchmarks)) {
+          updateHeader(obj);
+          benchmarks = obj.benchmarks;
+          updateCounts();
+          renderTable();
+
+          const btn = document.getElementById('btn-run');
+          if (btn && port) {
+            btn.disabled = false;
+            btn.textContent = 'Run Benchmarks';
+          }
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+
+    function updateHeader(d) {
+      if (d.chip) {
+        document.getElementById('hdr-chip').textContent = d.chip + (d.suite ? ' [' + d.suite + ']' : '');
+      }
+      if (d.clock_mhz) document.getElementById('hdr-clk').textContent = d.clock_mhz + ' MHz';
+      if (d.core) document.getElementById('hdr-core').textContent = d.core;
+      if (d.has_dp_fpu) document.getElementById('hdr-fpu').textContent = 'DP-FPU';
+      else if (d.has_fpu) document.getElementById('hdr-fpu').textContent = 'SP-FPU';
+      else document.getElementById('hdr-fpu').textContent = 'Soft-Float';
+
+      const acc = [];
+      if (d.has_cordic) acc.push('CORDIC');
+      if (d.has_fmac) acc.push('FMAC');
+      if (d.has_dma2d) acc.push('DMA2D');
+      if (d.has_rng) acc.push('TRNG');
+      document.getElementById('hdr-hw').textContent = acc.length ? acc.join('+') : 'None';
+
+      if (d.icache !== undefined) {
+        document.getElementById('hdr-cache').textContent = (d.icache && d.dcache) ? 'I$+D$ ON' : 'Cache OFF';
+      }
+
+      if (d.stm32mark) {
+        const scTotal = document.getElementById('sc-total');
+        if (scTotal) scTotal.textContent = Number(d.stm32mark).toLocaleString();
+      }
+
+      if (d.scores) {
+        const cats = ['cpu', 'fpu', 'dsp', 'gfx', 'ai', 'crypto', 'io', 'mem'];
+        cats.forEach(c => {
+          const val = d.scores[c];
+          if (val !== undefined) {
+            const elVal = document.getElementById('sc-' + c);
+            if (elVal) elVal.textContent = Number(val).toLocaleString();
+            const elBar = document.getElementById('bar-' + c);
+            if (elBar) elBar.style.width = Math.min(100, Math.max(5, Math.round((val / 10000.0) * 100))) + '%';
+            const tile = elVal?.closest('.sc-tile');
+            if (tile) {
+              if (d.suite === 'BASIC' && (c === 'gfx' || c === 'ai' || c === 'crypto')) {
+                tile.style.opacity = '0.35';
+                tile.title = 'Not available in Basic suite';
+              } else {
+                tile.style.opacity = '1.0';
+              }
+            }
+          }
+        });
+      }
+    }
+
+    function updateCounts() {
+      const counts = { ALL: benchmarks.length, CPU: 0, FPU: 0, DSP: 0, GFX: 0, AI: 0, Crypto: 0, IO: 0, Memory: 0 };
+      benchmarks.forEach(b => {
+        let c = b.category;
+        if (c === 'CORDIC' || c === 'FMAC' || c === 'Audio') c = 'DSP';
+        else if (c === 'RealTime') c = 'IO';
+        else if (c === 'Compress') c = 'Crypto';
+        if (counts[c] !== undefined) counts[c]++;
+      });
+      for (const [k, v] of Object.entries(counts)) {
+        const el = document.getElementById('cnt-' + k);
+        if (el) el.textContent = `(${v})`;
+      }
+    }
+
+    function setCat(cat) {
+      currentCat = cat;
+      document.querySelectorAll('.tab').forEach(b => {
+        b.classList.toggle('active', b.textContent.trim().startsWith(cat) || (cat === 'ALL' && b.textContent.trim().startsWith('All')));
+      });
+      renderTable();
+    }
+
+    function applyFilter() {
+      renderTable();
+    }
+
+    function renderTable() {
+      const q = (document.getElementById('filter-input')?.value || '').toLowerCase();
+      const list = benchmarks.filter(b => {
+        let matchCat = false;
+        if (currentCat === 'ALL') matchCat = true;
+        else if (currentCat === 'DSP') matchCat = (b.category === 'DSP' || b.category === 'CORDIC' || b.category === 'FMAC' || b.category === 'Audio');
+        else if (currentCat === 'IO') matchCat = (b.category === 'IO' || b.category === 'RealTime');
+        else if (currentCat === 'Crypto') matchCat = (b.category === 'Crypto' || b.category === 'Compress');
+        else matchCat = (b.category === currentCat);
+
+        const matchQ = !q || b.name.toLowerCase().includes(q) || b.category.toLowerCase().includes(q) || (b.description && b.description.toLowerCase().includes(q));
+        return matchCat && matchQ;
+      });
+
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+
+      if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="empty-prompt">No benchmarks match filter.</td></tr>`;
+        return;
+      }
+
+      list.forEach(b => {
+        const tr = document.createElement('tr');
+        const hwTag = b.available ? '<span class="tag-hw">HW</span>' : '<span class="tag-sw">N/A</span>';
+
+        tr.innerHTML = `
+          <td><span class="cat">${b.category}</span></td>
+          <td>
+            <div class="bench-name">${b.name}</div>
+            <div class="bench-desc">${b.description || ''}</div>
+          </td>
+          <td><span class="score">${b.score.toFixed(2)}</span></td>
+          <td class="mono">${b.unit}</td>
+          <td class="mono">${b.cycles.toLocaleString()}</td>
+          <td class="mono">${b.time_us.toLocaleString()}</td>
+          <td>${hwTag}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function exportCSV() {
+      if (!benchmarks.length) {
+        alert('No benchmark results to export yet. Connect USB and run benchmarks first.');
+        return;
+      }
+      let csv = 'Category,Benchmark,Description,Score,Unit,Cycles,Time_us,Hardware\n';
+      benchmarks.forEach(b => {
+        csv += `"${b.category}","${b.name}","${(b.description || '').replace(/"/g, '""')}",${b.score},"${b.unit}",${b.cycles},${b.time_us},"${b.available ? 'HW' : 'N/A'}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `stm32_benchmark_${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  </script>
+</body>
+</html>

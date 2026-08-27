@@ -1,0 +1,24 @@
+# Build output
+build/
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Dependencies (downloaded by fetch_deps.sh)
+lib/lwip/
+lib/cmsis/
+
+# Generated
+src/net/fsdata.c

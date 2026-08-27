@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STM32H723 Benchmark Server</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Top Nav -->
+    <header class="nav">
+      <div class="nav-left">
+        <div class="nav-title">
+          <span>STM32 BENCHMARK</span>
+          <span class="pill-chip"><!--#chip--></span>
+        </div>
+        <div class="nav-stats">
+          <span>CLK: <b id="hdr-clk"><!--#clk--> MHz</b></span>
+          <span>FPU: <b><!--#fpu--></b></span>
+          <span>ACCEL: <b><!--#cordic--> &middot; <!--#fmac--></b></span>
+          <span>MEM: <b>Flash <!--#flash-->K &middot; RAM <!--#ram-->K</b></span>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <div class="pill-mark" id="hdr-mark-wrap">
+          STM32MARK: <span id="hdr-mark"><!--#stm32mark--></span>
+        </div>
+        <button id="btn-run" class="btn btn-run" onclick="runBenchmarks()">Run All</button>
+        <button class="btn" onclick="fetchLiveJSON()">Refresh</button>
+      </div>
+    </header>
+
+    <!-- Main Table View -->
+    <main class="main">
+      <!-- Redesigned STM32Mark Scorecard Hub -->
+      <div class="scorecard" id="scorecard">
+        <div class="sc-hero">
+          <div class="sc-hero-title">STM32MARK INDEX</div>
+          <div class="sc-hero-val" id="sc-total"><!--#stm32mark--></div>
+          <div class="sc-hero-sub">Standardized Hardware Index</div>
+        </div>
+        <div class="sc-grid">
+          <div class="sc-tile" onclick="filterCategory('CPU')" title="Filter CPU integer tests">
+            <div class="sc-label">CPU</div>
+            <div class="sc-score" id="sc-cpu">--</div>
+            <div class="sc-bar"><div class="sc-fill" id="bar-cpu" style="width:0%"></div></div>
+          </div>
+          <div class="sc-tile" onclick="filterCategory('FPU')" title="Filter FPU float tests">
+            <div class="sc-label">FPU</div>
+            <div class="sc-score" id="sc-fpu">--</div>
+            <div class="sc-bar"><div class="sc-fill" id="bar-fpu" style="width:0%"></div></div>
+          </div>
+          <div class="sc-tile" onclick="filterCategory('DSP')" title="Filter DSP & Coprocessor tests">
+            <div class="sc-label">DSP / COP</div>
+            <div class="sc-score" id="sc-dsp">--</div>
+            <div class="sc-bar"><div class="sc-fill" id="bar-dsp" style="width:0%"></div></div>
+          </div>
+          <div class="sc-tile" onclick="filterCategory('GFX')" title="Filter 2D/3D Graphics tests">
+            <div class="sc-label">2D/3D GFX</div>
+            <div class="sc-score" id="sc-gfx">--</div>
+            <div class="sc-bar"><div class="sc-fill" id="bar-gfx" style="width:0%"></div></div>
+          </div>
+          <div class="sc-tile" onclick="filterCategory('AI')" title="Filter TinyML Edge AI tests">
+            <div class="sc-label">TINYML</div>
+            <div class="sc-score" id="sc-ai">--</div>
+            <div class="sc-bar"><div class="sc-fill" id="bar-ai" style="width:0%"></div></div>
+          </div>
+          <div class="sc-tile" onclick="filterCategory('Crypto')" title="Filter Hardware RNG & Crypto tests">
+            <div class="sc-label">CRYPTO</div>
+            <div class="sc-score" id="sc-crypto">--</div>
+            <div class="sc-bar"><div class="sc-fill" id="bar-crypto" style="width:0%"></div></div>
+          </div>
+          <div class="sc-tile" onclick="filterCategory('IO')" title="Filter GPIO, NVIC & DMA tests">
+            <div class="sc-label">I/O & RT</div>
+            <div class="sc-score" id="sc-io">--</div>
+            <div class="sc-bar"><div class="sc-fill" id="bar-io" style="width:0%"></div></div>
+          </div>
+          <div class="sc-tile" onclick="filterCategory('Memory')" title="Filter Memory & Cache tests">
+            <div class="sc-label">MEMORY</div>
+            <div class="sc-score" id="sc-mem">--</div>
+            <div class="sc-bar"><div class="sc-fill" id="bar-mem" style="width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="tab-group" id="tabs">
+          <button class="tab active" onclick="filterCategory('ALL')">All</button>
+          <button class="tab" onclick="filterCategory('CPU')">CPU</button>
+          <button class="tab" onclick="filterCategory('FPU')">FPU</button>
+          <button class="tab" onclick="filterCategory('DSP')">DSP</button>
+          <button class="tab" onclick="filterCategory('GFX')">GFX</button>
+          <button class="tab" onclick="filterCategory('AI')">AI</button>
+          <button class="tab" onclick="filterCategory('Crypto')">Crypto</button>
+          <button class="tab" onclick="filterCategory('IO')">I/O & RT</button>
+          <button class="tab" onclick="filterCategory('Memory')">Memory</button>
+        </div>
+        <input type="text" id="search-box" class="search-input" placeholder="Search tests..." oninput="filterTable()">
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:75px">Cat</th>
+              <th>Benchmark</th>
+              <th style="width:110px">Score</th>
+              <th style="width:75px">Unit</th>
+              <th style="width:95px">Cycles</th>
+              <th style="width:75px">Time (µs)</th>
+              <th style="width:65px">Status</th>
+            </tr>
+          </thead>
+          <tbody id="bench-body">
+            <!--#bench_table-->
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
