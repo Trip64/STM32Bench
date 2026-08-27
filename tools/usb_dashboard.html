@@ -902,8 +902,23 @@
       if (d.has_rng) acc.push('TRNG');
       document.getElementById('hdr-hw').textContent = acc.length ? acc.join('+') : 'None';
 
-      if (d.icache !== undefined) {
-        document.getElementById('hdr-cache').textContent = (d.icache && d.dcache) ? 'I$+D$ ON' : 'Cache OFF';
+      if (d.icache !== undefined || d.dcache !== undefined) {
+        const ic = (d.icache === true || d.icache === 'true');
+        const dc = (d.dcache === true || d.dcache === 'true');
+        const isM0 = d.core && (d.core.indexOf('M0') !== -1);
+        let cacheLabel = 'None';
+        if (ic && dc) {
+          cacheLabel = 'I+D Enabled';
+        } else if (ic) {
+          cacheLabel = 'I-Cache ON';
+        } else if (dc) {
+          cacheLabel = 'D-Cache ON';
+        } else if (isM0) {
+          cacheLabel = 'None (N/A)';
+        } else {
+          cacheLabel = 'Disabled';
+        }
+        document.getElementById('hdr-cache').textContent = cacheLabel;
       }
 
       if (d.stm32mark) {
