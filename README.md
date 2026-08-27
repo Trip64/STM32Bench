@@ -49,16 +49,6 @@ Actual hardware run results captured over Web Serial. Scores are normalized agai
 | **Memory & Cache** | DTCM vs Flash, L1 D-Cache, AXI memcpy | 295 pts | 13,600 pts | 46.1x |
 | **Overall STM32Mark** | **Geometric Mean across active domains** | **323 pts** | **11,970 pts** | **37.1x** |
 
-### Scoring Aggregator Logic
-
-```mermaid
-flowchart LR
-    A["1. Hardware Workloads<br/>44 Bare-Metal Tests"] --> B["2. Cycle Timing<br/>DWT / TIM2 Resolution"]
-    B --> C["3. Baseline Scaling<br/>Points relative to M4 Baseline"]
-    C --> D["4. Geometric Mean<br/>Equal weight across 8 domains"]
-    D --> E["5. Calibrated Index<br/>H723: 11,970 pts | F072: 323 pts"]
-```
-
 ### Detailed Benchmark Results (H723 vs. F072)
 
 | Category | Benchmark Test | Metric / Unit | STM32F072RB (48 MHz) | STM32H723ZG (550 MHz) | Notes / Speedup |
@@ -96,43 +86,24 @@ flowchart LR
 
 ---
 
-## Platform Abstraction Layer (PAL) Architecture
-
-Instead of writing benchmarks tied to ST HAL or specific pin registers, every test workload in the repository calls only the **Platform Abstraction Layer (`src/pal/pal.h`)**.
+## System Architecture & PAL
 
 ```mermaid
-flowchart LR
-    subgraph S1 ["1. Benchmark Tests"]
-        direction TB
-        B1["Integer ALU & Sieve (cpu_*.c)"]
-        B2["Mandelbrot & MatMul (fpu_*.c)"]
-        B3["CORDIC, FMAC & SIMD (dsp_*.c)"]
-        B4["DMA2D & TinyML (gfx_*.c, ai_*.c)"]
+flowchart TD
+    subgraph Software_Stack ["Firmware & Abstraction Stack"]
+        SUITES["Benchmark Test Engine (src/bench/)<br/>Basic Suite: 14 tests (M0/M3/M4, &lt;6KB RAM)<br/>Extended Suite: 44 tests (FPU, DSP, CORDIC, FMAC, DMA2D)"]
+        PAL["Platform Abstraction Layer (src/pal/pal.h)<br/>Cycle Timing: DWT / TIM2 32-bit hardware timers<br/>Hardware Feature Probing: FPU, DSP, CORDIC, FMAC<br/>Memory &amp; Cache: DTCM, L1 I/D-Cache Control"]
     end
 
-    subgraph S2 ["2. PAL Interface (pal.h)"]
-        direction TB
-        P1["PAL_GetCycleCount() / Clock Hooks"]
-        P2["PAL_HasFPU() / Hardware Probes"]
-        P3["PAL_EnableDCache() / Cache Control"]
-        P4["PAL_UART_WriteBytes() / Telemetry"]
+    subgraph Hardware_Stack ["Silicon Targets & Telemetry Interfaces"]
+        BOARDS["Silicon Drivers &amp; BSP (src/pal/, src/bsp/)<br/>NUCLEO-H723ZG (Cortex-M7 @ 550MHz, DWT, L1, TCM)<br/>NUCLEO-F072RB / DISCO (Cortex-M0 @ 48MHz, TIM2, CRS)<br/>Custom STM32 Target (pal_stm32xx.c for F4, F7, G4, U5)"]
+        CLIENTS["Telemetry &amp; Dashboards<br/>Web Serial Dashboard (tools/usb_dashboard.html)<br/>ST-LINK VCP UART CLI (115200 8N1)<br/>RMII 100M Ethernet Web Server (lwIP raw HTTPD)"]
     end
 
-    subgraph S3 ["3. Silicon Drivers"]
-        direction TB
-        D1["pal_stm32h7.c (DWT, 550MHz, L1 Cache)"]
-        D2["pal_stm32f0.c (TIM2 32-bit, 48MHz, USB)"]
-        D3["pal_stm32xx.c (Custom target port)"]
-    end
-
-    subgraph S4 ["4. Client Outputs"]
-        direction TB
-        O1["Web Serial API (115200 8N1 JSON)"]
-        O2["UART Console (ASCII Table)"]
-        O3["RMII Ethernet (lwIP raw HTTPD)"]
-    end
-
-    S1 --> S2 --> S3 --> S4
+    SUITES -- "C Calls (NO_SYS=1)" --> PAL
+    PAL -- "Hardware Hooks" --> BOARDS
+    BOARDS -- "USB CDC / UART (JSON)" --> CLIENTS
+    BOARDS -- "RMII 100M PHY" --> CLIENTS
 ```
 
 ### Why PAL instead of HAL or direct registers?
@@ -169,19 +140,6 @@ Because of PAL, porting to any STM32 board (STM32F4, STM32F7, STM32G4, STM32L4, 
    ```bash
    make BOARD=MY_BOARD
    ```
-
----
-
-## Execution & Telemetry Pipeline
-
-```mermaid
-flowchart LR
-    A["Trigger<br/>Web Serial / Button PC13 / HTTP"] --> B["Hardware Feature Probe<br/>FPU / DSP / CORDIC / FMAC"]
-    B --> C["Workload Loop<br/>Basic (14) or Extended (44)"]
-    C --> D["Cycle Timing<br/>ARM DWT (H7) or TIM2 (F0)"]
-    D --> E["Dual Telemetry Broadcast<br/>USB CDC + ST-Link UART + RMII"]
-    E --> F["Client Presentation<br/>Web Serial Dashboard & CLI"]
-```
 
 ---
 
