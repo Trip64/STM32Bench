@@ -37,19 +37,44 @@ Actual hardware run results captured over Web Serial. Scores are normalized agai
 
 ### Category Breakdown Scores
 
-```
-DOMAIN SCORES:               STM32F072RB (48 MHz)       STM32H723ZG (550 MHz)
------------------------------------------------------------------------------
-CPU (Integer ALU & Logic)    345 pts                    10,480 pts (30.4x)
-FPU (Float / Double)         68 pts (Soft-Float)        14,200 pts (208.8x)
-DSP & Coprocessors (SIMD)    280 pts (Scalar C)         18,900 pts (67.5x)
-2D & 3D Graphics             N/A (Basic Suite)          10,850 pts
-TinyML & Edge AI             N/A (Basic Suite)          9,950 pts
-Hardware Cryptography        N/A (Basic Suite)          11,400 pts
-I/O & Interrupt Real-Time    360 pts                    8,950 pts (24.8x)
-Memory & Cache Subsystem     295 pts                    13,600 pts (46.1x)
------------------------------------------------------------------------------
-OVERALL STM32MARK            323 pts                    11,970 pts
+| Compute Domain | Subsystems Tested | STM32F072RB (48 MHz) | STM32H723ZG (550 MHz) | Speedup Factor |
+|---|---|---|---|---|
+| **CPU** | Integer ALU, shifts, prime sieve, quicksort | 345 pts | 10,480 pts | 30.4x |
+| **FPU** | Float & double precision Mandelbrot, FFT | 68 pts (Soft-Float) | 14,200 pts (Hardware DP) | 208.8x |
+| **DSP & Coprocessors** | Q15 SIMD dot product, CORDIC, FMAC | 280 pts (Scalar C) | 18,900 pts (Hardware accel) | 67.5x |
+| **2D & 3D Graphics** | Chrom-ART DMA2D, line drawing, 3D raster | N/A (Basic Suite) | 10,850 pts | - |
+| **TinyML & Edge AI** | Quantized INT8 Conv2D, Dense, Softmax | N/A (Basic Suite) | 9,950 pts | - |
+| **Hardware Crypto** | True RNG, SHA-256, AES-128, ChaCha20 | N/A (Basic Suite) | 11,400 pts | - |
+| **I/O & Real-Time** | GPIO BSRR toggle, NVIC interrupt latency | 360 pts | 8,950 pts | 24.8x |
+| **Memory & Cache** | DTCM vs Flash, L1 D-Cache, AXI memcpy | 295 pts | 13,600 pts | 46.1x |
+| **Overall STM32Mark** | **Geometric Mean across active domains** | **323 pts** | **11,970 pts** | **37.1x** |
+
+### Scoring Aggregator Logic
+
+```mermaid
+flowchart TD
+    subgraph Silicon ["Measured Hardware Domains"]
+        D_CPU["CPU Core: 10,480 pts<br/>Integer ALU, Shifts, Sieve, QuickSort"]
+        D_FPU["FPU Pipeline: 14,200 pts<br/>Hardware DP/SP Mandelbrot, FFT"]
+        D_DSP["DSP & Coproc: 18,900 pts<br/>SIMD DotProd, CORDIC, FMAC"]
+        D_GFX["Graphics: 10,850 pts<br/>DMA2D Blending, 3D Rasterizer"]
+        D_AI["TinyML: 9,950 pts<br/>Quantized INT8 Conv2D, Dense"]
+        D_CRY["Crypto: 11,400 pts<br/>True RNG, SHA-256, AES-128"]
+        D_IO["I/O & RT: 8,950 pts<br/>Atomic BSRR Toggle, 12-Cycle IRQ"]
+        D_MEM["Memory: 13,600 pts<br/>DTCM vs Flash, L1 D-Cache"]
+    end
+
+    subgraph Aggregator ["Scoring Engine"]
+        LOG["Log-Sum Accumulator<br/>log(points) per active domain"]
+        GM["Geometric Mean Function<br/>exp(log_sum / active_count)"]
+    end
+
+    subgraph Scorecard ["STM32Mark Composite Index"]
+        H7_SCORE["STM32H723ZG (550 MHz): 11,970 pts<br/>(11.97x baseline)"]
+        F0_SCORE["STM32F072RB (48 MHz): 323 pts<br/>(0.32x baseline)"]
+    end
+
+    Silicon --> LOG --> GM --> Scorecard
 ```
 
 ### Detailed Benchmark Results (H723 vs. F072)
@@ -93,32 +118,47 @@ OVERALL STM32MARK            323 pts                    11,970 pts
 
 Instead of writing benchmarks tied to ST HAL or specific pin registers, every test workload in the repository calls only the **Platform Abstraction Layer (`src/pal/pal.h`)**.
 
-```
-+-------------------------------------------------------------------------+
-|                       BENCHMARK TEST WORKLOADS                          |
-|         cpu_*.c | fpu_*.c | dsp_*.c | gfx_*.c | ai_*.c | mem_*.c        |
-+------------------------------------+------------------------------------+
-                                     | pure C, calls only PAL API
-                                     v
-+-------------------------------------------------------------------------+
-|                     PAL INTERFACE (src/pal/pal.h)                       |
-|  - Cycle timing:    PAL_GetCycleCount(), PAL_GetCoreClockHz()           |
-|  - Capability probe: PAL_HasFPU(), PAL_HasDSP(), PAL_HasCORDIC()       |
-|  - Cache control:   PAL_EnableDCache(), PAL_CleanDCache()               |
-|  - Telemetry I/O:   PAL_UART_WriteBytes(), PAL_UART_ReadChar()          |
-|  - Board indicators: PAL_LED_Set(), PAL_Button_Read()                   |
-+------------------------------------+------------------------------------+
-                                     | family-specific implementation
-            +------------------------+------------------------+
-            |                                                 |
-            v                                                 v
-+--------------------------+                     +------------------------+
-|      pal_stm32h7.c       |                     |      pal_stm32f0.c     |
-|  - ARM DWT Cycle Counter |                     |  - TIM2 32-bit Counter |
-|  - VOS0 Overdrive @ 550M |                     |  - HSI48 / PLL Clock   |
-|  - 7 WS Flash Latency    |                     |  - Soft-Float Driver   |
-|  - L1 I/D-Cache & DTCM   |                     |  - Crystal-less USB CRS|
-+--------------------------+                     +------------------------+
+```mermaid
+flowchart TD
+    subgraph Test_Suite ["Benchmark Test Suite (Pure C)"]
+        CPU_TESTS["CPU Benchmarks<br/>cpu_dhry, cpu_sieve, cpu_sort, cpu_crc32, cpu_ipc"]
+        FPU_TESTS["Floating-Point Benchmarks<br/>fpu_mandel_sp/dp, fpu_fft, fpu_matmul_sp/dp"]
+        DSP_TESTS["DSP & Coprocessor Benchmarks<br/>dsp_dotprod, dsp_fir, cordic_*, fmac_*"]
+        GFX_AI_TESTS["Graphics & TinyML Benchmarks<br/>gfx_2d_*, gfx_3d_*, ai_conv2d, ai_dense"]
+        MEM_RT_TESTS["Memory & Real-Time Benchmarks<br/>mem_memcpy, mem_latency, rt_irqlat, io_gpio_*"]
+    end
+
+    subgraph PAL_Interface ["Platform Abstraction Layer Interface (src/pal/pal.h)"]
+        PAL_CLK["Clock & Timing<br/>PAL_GetCycleCount()<br/>PAL_GetCoreClockHz()"]
+        PAL_FEAT["Hardware Detection<br/>PAL_HasFPU(), PAL_HasDSP()<br/>PAL_HasCORDIC(), PAL_HasFMAC()"]
+        PAL_CACHE["Memory Hierarchy<br/>PAL_EnableDCache()<br/>PAL_CleanDCache()"]
+        PAL_COMM["Telemetry I/O<br/>PAL_UART_WriteBytes()<br/>PAL_UART_ReadChar()"]
+    end
+
+    subgraph Implementations ["Hardware Driver Implementations"]
+        subgraph PAL_H7 ["STM32H7 Target (pal_stm32h7.c)"]
+            H7_DWT["ARM DWT Cycle Counter (1.81ns)"]
+            H7_VOS["VOS0 Overdrive (550 MHz) + 7WS"]
+            H7_COP["CORDIC + FMAC + DMA2D Drivers"]
+            H7_TCM["L1 I/D-Cache & DTCM/ITCM Bus"]
+        end
+
+        subgraph PAL_F0 ["STM32F0 Target (pal_stm32f0.c)"]
+            F0_TIM["TIM2 32-bit Timer Counter (20.8ns)"]
+            F0_CLK["HSI48 / PLL Clock (48 MHz)"]
+            F0_USB["Crystal-less USB CDC (CRS)"]
+            F0_SFT["Portable Soft-Float Math Emulation"]
+        end
+
+        subgraph PAL_CUSTOM ["Any Custom STM32 Target (pal_stm32xx.c)"]
+            C_PORT["User Implements 12 Hook Functions<br/>(STM32F4, F7, G4, L4, U5, etc.)"]
+        end
+    end
+
+    Test_Suite -->|Calls PAL API only| PAL_Interface
+    PAL_Interface --> PAL_H7
+    PAL_Interface --> PAL_F0
+    PAL_Interface -.-> PAL_CUSTOM
 ```
 
 ### Why PAL instead of HAL or direct registers?
@@ -158,21 +198,38 @@ Because of PAL, porting to any STM32 board (STM32F4, STM32F7, STM32G4, STM32L4, 
 
 ---
 
-## How the Scoring Engine Works
+## Execution & Telemetry Pipeline
 
-The composite **STM32Mark** score is calculated using a weighted geometric mean across all active compute domains. Using a geometric mean prevents a single high-frequency metric (like memory fill throughput) from skewing the total score over compute-bound tests.
+```mermaid
+flowchart LR
+    subgraph Trigger ["Trigger Sources"]
+        T1["Web Serial App<br/>'r' command"]
+        T2["Blue User Button<br/>PC13 Interrupt"]
+        T3["HTTP REST API<br/>/api/benchmarks"]
+    end
 
+    subgraph Engine ["Execution Engine (NO_SYS=1)"]
+        PROBE["Hardware Probe<br/>FPU / DSP / Coproc"]
+        RUN["Loop Workloads<br/>Basic: 14 / Extended: 44"]
+        DWT["Cycle Timer<br/>DWT / TIM2 Delays"]
+    end
+
+    subgraph Transport ["Dual Telemetry Stream"]
+        CDC["Native USB CDC ACM<br/>(PA11 / PA12)"]
+        VCP["ST-LINK Virtual COM<br/>(USART2 @ 115200 8N1)"]
+        ETH["RMII 100M Ethernet<br/>(lwIP zero-copy raw HTTPD)"]
+    end
+
+    subgraph Client ["Client Presentation"]
+        DASH["Web Serial Dashboard<br/>(Real-Time Scorecard & CSV)"]
+        TERM["Terminal Serial CLI<br/>(ANSI Colored Table)"]
+        BROWSER["Web Browser<br/>(On-Chip Dashboard)"]
+    end
+
+    Trigger --> PROBE --> RUN --> DWT --> Transport
+    CDC & VCP --> DASH & TERM
+    ETH --> BROWSER
 ```
-Total STM32Mark = GeometricMean(CPU, FPU, DSP, GFX, AI, Crypto, IO, Memory)
-```
-
-Each benchmark test computes a normalized score relative to a calibrated baseline:
-
-$$\text{Points} = \left( \frac{\text{Measured Metric}}{\text{Reference Baseline Metric}} \right) \times 1000$$
-
-- A Cortex-M4 @ 100 MHz scores approximately **1,000 pts** overall.
-- STM32F072RB @ 48 MHz scores **323 pts** (limited by single-issue Thumb-1, soft-float math, and lack of SIMD).
-- STM32H723ZG @ 550 MHz scores **11,970 pts** (accelerated by dual-issue Cortex-M7 pipelines, double-precision FPU, CORDIC, FMAC, and L1 cache).
 
 ---
 
