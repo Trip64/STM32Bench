@@ -52,29 +52,11 @@ Actual hardware run results captured over Web Serial. Scores are normalized agai
 ### Scoring Aggregator Logic
 
 ```mermaid
-flowchart TD
-    subgraph Silicon ["Measured Hardware Domains"]
-        D_CPU["CPU Core: 10,480 pts<br/>Integer ALU, Shifts, Sieve, QuickSort"]
-        D_FPU["FPU Pipeline: 14,200 pts<br/>Hardware DP/SP Mandelbrot, FFT"]
-        D_DSP["DSP & Coproc: 18,900 pts<br/>SIMD DotProd, CORDIC, FMAC"]
-        D_GFX["Graphics: 10,850 pts<br/>DMA2D Blending, 3D Rasterizer"]
-        D_AI["TinyML: 9,950 pts<br/>Quantized INT8 Conv2D, Dense"]
-        D_CRY["Crypto: 11,400 pts<br/>True RNG, SHA-256, AES-128"]
-        D_IO["I/O & RT: 8,950 pts<br/>Atomic BSRR Toggle, 12-Cycle IRQ"]
-        D_MEM["Memory: 13,600 pts<br/>DTCM vs Flash, L1 D-Cache"]
-    end
-
-    subgraph Aggregator ["Scoring Engine"]
-        LOG["Log-Sum Accumulator<br/>log(points) per active domain"]
-        GM["Geometric Mean Function<br/>exp(log_sum / active_count)"]
-    end
-
-    subgraph Scorecard ["STM32Mark Composite Index"]
-        H7_SCORE["STM32H723ZG (550 MHz): 11,970 pts<br/>(11.97x baseline)"]
-        F0_SCORE["STM32F072RB (48 MHz): 323 pts<br/>(0.32x baseline)"]
-    end
-
-    Silicon --> LOG --> GM --> Scorecard
+flowchart LR
+    A["1. Hardware Workloads<br/>44 Bare-Metal Tests"] --> B["2. Cycle Timing<br/>DWT / TIM2 Resolution"]
+    B --> C["3. Baseline Scaling<br/>Points relative to M4 Baseline"]
+    C --> D["4. Geometric Mean<br/>Equal weight across 8 domains"]
+    D --> E["5. Calibrated Index<br/>H723: 11,970 pts | F072: 323 pts"]
 ```
 
 ### Detailed Benchmark Results (H723 vs. F072)
@@ -119,46 +101,38 @@ flowchart TD
 Instead of writing benchmarks tied to ST HAL or specific pin registers, every test workload in the repository calls only the **Platform Abstraction Layer (`src/pal/pal.h`)**.
 
 ```mermaid
-flowchart TD
-    subgraph Test_Suite ["Benchmark Test Suite (Pure C)"]
-        CPU_TESTS["CPU Benchmarks<br/>cpu_dhry, cpu_sieve, cpu_sort, cpu_crc32, cpu_ipc"]
-        FPU_TESTS["Floating-Point Benchmarks<br/>fpu_mandel_sp/dp, fpu_fft, fpu_matmul_sp/dp"]
-        DSP_TESTS["DSP & Coprocessor Benchmarks<br/>dsp_dotprod, dsp_fir, cordic_*, fmac_*"]
-        GFX_AI_TESTS["Graphics & TinyML Benchmarks<br/>gfx_2d_*, gfx_3d_*, ai_conv2d, ai_dense"]
-        MEM_RT_TESTS["Memory & Real-Time Benchmarks<br/>mem_memcpy, mem_latency, rt_irqlat, io_gpio_*"]
+flowchart LR
+    subgraph S1 ["1. Benchmark Tests"]
+        direction TB
+        B1["Integer ALU & Sieve (cpu_*.c)"]
+        B2["Mandelbrot & MatMul (fpu_*.c)"]
+        B3["CORDIC, FMAC & SIMD (dsp_*.c)"]
+        B4["DMA2D & TinyML (gfx_*.c, ai_*.c)"]
     end
 
-    subgraph PAL_Interface ["Platform Abstraction Layer Interface (src/pal/pal.h)"]
-        PAL_CLK["Clock & Timing<br/>PAL_GetCycleCount()<br/>PAL_GetCoreClockHz()"]
-        PAL_FEAT["Hardware Detection<br/>PAL_HasFPU(), PAL_HasDSP()<br/>PAL_HasCORDIC(), PAL_HasFMAC()"]
-        PAL_CACHE["Memory Hierarchy<br/>PAL_EnableDCache()<br/>PAL_CleanDCache()"]
-        PAL_COMM["Telemetry I/O<br/>PAL_UART_WriteBytes()<br/>PAL_UART_ReadChar()"]
+    subgraph S2 ["2. PAL Interface (pal.h)"]
+        direction TB
+        P1["PAL_GetCycleCount() / Clock Hooks"]
+        P2["PAL_HasFPU() / Hardware Probes"]
+        P3["PAL_EnableDCache() / Cache Control"]
+        P4["PAL_UART_WriteBytes() / Telemetry"]
     end
 
-    subgraph Implementations ["Hardware Driver Implementations"]
-        subgraph PAL_H7 ["STM32H7 Target (pal_stm32h7.c)"]
-            H7_DWT["ARM DWT Cycle Counter (1.81ns)"]
-            H7_VOS["VOS0 Overdrive (550 MHz) + 7WS"]
-            H7_COP["CORDIC + FMAC + DMA2D Drivers"]
-            H7_TCM["L1 I/D-Cache & DTCM/ITCM Bus"]
-        end
-
-        subgraph PAL_F0 ["STM32F0 Target (pal_stm32f0.c)"]
-            F0_TIM["TIM2 32-bit Timer Counter (20.8ns)"]
-            F0_CLK["HSI48 / PLL Clock (48 MHz)"]
-            F0_USB["Crystal-less USB CDC (CRS)"]
-            F0_SFT["Portable Soft-Float Math Emulation"]
-        end
-
-        subgraph PAL_CUSTOM ["Any Custom STM32 Target (pal_stm32xx.c)"]
-            C_PORT["User Implements 12 Hook Functions<br/>(STM32F4, F7, G4, L4, U5, etc.)"]
-        end
+    subgraph S3 ["3. Silicon Drivers"]
+        direction TB
+        D1["pal_stm32h7.c (DWT, 550MHz, L1 Cache)"]
+        D2["pal_stm32f0.c (TIM2 32-bit, 48MHz, USB)"]
+        D3["pal_stm32xx.c (Custom target port)"]
     end
 
-    Test_Suite -->|Calls PAL API only| PAL_Interface
-    PAL_Interface --> PAL_H7
-    PAL_Interface --> PAL_F0
-    PAL_Interface -.-> PAL_CUSTOM
+    subgraph S4 ["4. Client Outputs"]
+        direction TB
+        O1["Web Serial API (115200 8N1 JSON)"]
+        O2["UART Console (ASCII Table)"]
+        O3["RMII Ethernet (lwIP raw HTTPD)"]
+    end
+
+    S1 --> S2 --> S3 --> S4
 ```
 
 ### Why PAL instead of HAL or direct registers?
@@ -202,33 +176,11 @@ Because of PAL, porting to any STM32 board (STM32F4, STM32F7, STM32G4, STM32L4, 
 
 ```mermaid
 flowchart LR
-    subgraph Trigger ["Trigger Sources"]
-        T1["Web Serial App<br/>'r' command"]
-        T2["Blue User Button<br/>PC13 Interrupt"]
-        T3["HTTP REST API<br/>/api/benchmarks"]
-    end
-
-    subgraph Engine ["Execution Engine (NO_SYS=1)"]
-        PROBE["Hardware Probe<br/>FPU / DSP / Coproc"]
-        RUN["Loop Workloads<br/>Basic: 14 / Extended: 44"]
-        DWT["Cycle Timer<br/>DWT / TIM2 Delays"]
-    end
-
-    subgraph Transport ["Dual Telemetry Stream"]
-        CDC["Native USB CDC ACM<br/>(PA11 / PA12)"]
-        VCP["ST-LINK Virtual COM<br/>(USART2 @ 115200 8N1)"]
-        ETH["RMII 100M Ethernet<br/>(lwIP zero-copy raw HTTPD)"]
-    end
-
-    subgraph Client ["Client Presentation"]
-        DASH["Web Serial Dashboard<br/>(Real-Time Scorecard & CSV)"]
-        TERM["Terminal Serial CLI<br/>(ANSI Colored Table)"]
-        BROWSER["Web Browser<br/>(On-Chip Dashboard)"]
-    end
-
-    Trigger --> PROBE --> RUN --> DWT --> Transport
-    CDC & VCP --> DASH & TERM
-    ETH --> BROWSER
+    A["Trigger<br/>Web Serial / Button PC13 / HTTP"] --> B["Hardware Feature Probe<br/>FPU / DSP / CORDIC / FMAC"]
+    B --> C["Workload Loop<br/>Basic (14) or Extended (44)"]
+    C --> D["Cycle Timing<br/>ARM DWT (H7) or TIM2 (F0)"]
+    D --> E["Dual Telemetry Broadcast<br/>USB CDC + ST-Link UART + RMII"]
+    E --> F["Client Presentation<br/>Web Serial Dashboard & CLI"]
 ```
 
 ---
